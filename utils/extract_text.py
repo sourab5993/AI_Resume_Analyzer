@@ -53,5 +53,9 @@ def extract_text(file_path):
         return text
     elif ext in ['.docx', '.doc']:
         return docx2txt.process(file_path)
+    elif ext == '.txt':
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            return f.read()
     else:
         raise ValueError('Unsupported file type: ' + ext)
+
