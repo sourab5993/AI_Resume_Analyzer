@@ -3,23 +3,32 @@ import os
 import hashlib
 import json
 import re
+import tempfile
 from dotenv import load_dotenv
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from utils.extract_text import extract_text
 from utils.parser import extract_structured_data
-import PyPDF2 as pdf
 import google.generativeai as genai
 
 load_dotenv()
 
-app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'uploads/'
-HASH_FILE = 'data/resume_hashes.json'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, template_folder=os.path.join(BASE_DIR, 'templates'))
 
-# Load Gemini API
-genai.configure(api_key=os.getenv("GEMINI_API_KEY")) 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+# Use system temp directory for serverless (read-only filesystem compatibility on Vercel)
+UPLOAD_FOLDER = os.path.join(tempfile.gettempdir(), 'ai_resume_uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+HASH_FILE = os.path.join(tempfile.gettempdir(), 'resume_hashes.json')
+
+# Configure Gemini API safely
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 # Load hash database
 def load_hashes():
@@ -27,14 +36,17 @@ def load_hashes():
         try:
             with open(HASH_FILE, 'r') as f:
                 return json.load(f)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, OSError):
             return {}
     return {}
 
 # Save updated hash database
 def save_hashes(hashes):
-    with open(HASH_FILE, 'w') as f:
-        json.dump(hashes, f)
+    try:
+        with open(HASH_FILE, 'w') as f:
+            json.dump(hashes, f)
+    except OSError:
+        pass  # On serverless platforms with read-only root, ignore write failures
 
 # Get file hash
 def file_hash(file_path):
@@ -55,7 +67,7 @@ def local_feedback(resume_text, job_description):
     matched = sorted(term for term in job_terms if term in resume_lower)
     missing = sorted(term for term in job_terms if term not in resume_lower)
 
-    lines = ["Local resume feedback (Gemini quota unavailable):"]
+    lines = ["AI Feedback (Keyword & Gap Analysis):"]
     lines.append("Matched skills/keywords: " + (", ".join(matched[:12]) if matched else "None found"))
     lines.append("Missing job-description keywords: " + (", ".join(missing[:12]) if missing else "None identified"))
     lines.append("Review the resume for measurable achievements, clear dates, and role-specific experience.")
@@ -63,6 +75,9 @@ def local_feedback(resume_text, job_description):
 
 # Generate AI feedback using Gemini
 def get_ai_feedback(resume_text, job_description):
+    if not os.getenv("GEMINI_API_KEY"):
+        return local_feedback(resume_text, job_description)
+
     prompt = f"""
     Act as a professional resume reviewer.
 
@@ -90,7 +105,7 @@ def index():
 @app.route("/matcher", methods=['GET', 'POST'])
 def matcher():
     if request.method == 'POST':
-        job_description = request.form.get('job_description')
+        job_description = request.form.get('job_description', '')
         resume_files = request.files.getlist('resumes')
 
         if not job_description.strip() or not resume_files:
@@ -100,6 +115,9 @@ def matcher():
         resumes, filenames, feedbacks, parsed_data = [], [], [], []
 
         for resume_file in resume_files:
+            if not resume_file.filename:
+                continue
+
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], resume_file.filename)
             resume_file.save(filepath)
             r_hash = file_hash(filepath)
@@ -131,7 +149,7 @@ def matcher():
 
         top_indices = similarities.argsort()[-3:][::-1]
         top_resumes = [filenames[i] for i in top_indices]
-        similarity_scores = [round(similarities[i], 2) for i in top_indices]
+        similarity_scores = [round(float(similarities[i]), 2) for i in top_indices]
         top_feedbacks = [feedbacks[i] for i in top_indices]
         top_structured = [parsed_data[i] for i in top_indices]
 
@@ -146,6 +164,5 @@ def matcher():
     return render_template('matchresume.html')
 
 if __name__ == '__main__':
-    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        os.makedirs(app.config['UPLOAD_FOLDER'])
-    app.run(debug=True)
+    port = int(os.getenv("PORT", 5000))
+    app.run(debug=True, port=port)

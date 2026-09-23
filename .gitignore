@@ -1,13 +1,31 @@
+# Environment & Secret files
 .env
+.env.local
+
+# Virtual environments
 .venv/
 env/
 venv/
+ENV/
+
+# Python byte-code & caches
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Logs
 *.log
 pip_install.log
 
-# Uploaded resumes / user files
+# Uploaded resumes / local files
 uploads/*
 !uploads/.gitkeep
+data/
+
+# IDE & Editor files
+*.code-workspace
+.vscode/
+.idea/
+
+# Vercel build output
+.vercel/

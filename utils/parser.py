@@ -25,9 +25,13 @@ def safe_json_parse(text):
 # Load environment variables
 load_dotenv()
 
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+# Configure Gemini safely
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
 
 def local_structured_data(resume_text):
     lines = [line.strip(" -•\t") for line in resume_text.splitlines() if line.strip()]
@@ -78,6 +82,9 @@ Resume:
 {resume_text}
 \"\"\"
 """
+    if not os.getenv("GEMINI_API_KEY"):
+        return local_structured_data(resume_text)
+
     try:
         model = genai.GenerativeModel(GEMINI_MODEL)
         response = model.generate_content(prompt)
