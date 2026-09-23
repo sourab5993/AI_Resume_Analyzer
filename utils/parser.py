@@ -30,7 +30,12 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODELS = [
+    os.getenv("GEMINI_MODEL", "gemini-3.7-flash"),
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-flash-latest"
+]
 
 
 def local_structured_data(resume_text):
@@ -85,26 +90,18 @@ Resume:
     if not os.getenv("GEMINI_API_KEY"):
         return local_structured_data(resume_text)
 
-    try:
-        model = genai.GenerativeModel(GEMINI_MODEL)
-        response = model.generate_content(prompt)
+    for model_name in GEMINI_MODELS:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            raw = response.text.strip()
+            return safe_json_parse(raw)
+        except Exception as e:
+            err_msg = str(e).lower()
+            if "429" in err_msg or "quota" in err_msg or "404" in err_msg or "not found" in err_msg:
+                continue
+            break
 
-        raw = response.text.strip()
-        print("=== Gemini raw response ===")
-        print(raw)
+    return local_structured_data(resume_text)
 
-        # Use the safe parser instead of json.loads
-        return safe_json_parse(raw)
-
-    except json.JSONDecodeError as e:
-        return {
-            "skills": [],
-            "education": [],
-            "experience": [],
-            "error": f"Invalid JSON returned: {str(e)}. Raw output: {raw}"
-        }
-    except Exception as e:
-        if "429" in str(e) or "quota" in str(e).lower():
-            return local_structured_data(resume_text)
-        return {"skills": [], "education": [], "experience": [], "error": str(e)}
   

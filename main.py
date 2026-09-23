@@ -28,7 +28,12 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODELS = [
+    os.getenv("GEMINI_MODEL", "gemini-3.7-flash"),
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-flash-latest"
+]
 
 # Load hash database
 def load_hashes():
@@ -73,7 +78,7 @@ def local_feedback(resume_text, job_description):
     lines.append("Review the resume for measurable achievements, clear dates, and role-specific experience.")
     return "\n".join(lines)
 
-# Generate AI feedback using Gemini
+# Generate AI feedback using Gemini with multi-model fallback
 def get_ai_feedback(resume_text, job_description):
     if not os.getenv("GEMINI_API_KEY"):
         return local_feedback(resume_text, job_description)
@@ -87,16 +92,22 @@ def get_ai_feedback(resume_text, job_description):
     Resume:
     {resume_text}
 
-    Provide feedback on how the resume can be improved to better match the job description. List missing skills, improvements, and red flags.
+    Provide actionable feedback on how the resume can be improved to better match the job description. List missing skills, improvements, and red flags.
     """
-    try:
-        model = genai.GenerativeModel(GEMINI_MODEL)
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except Exception as e:
-        if "429" in str(e) or "quota" in str(e).lower():
-            return local_feedback(resume_text, job_description)
-        return f"Gemini Error: {e}"
+
+    for model_name in GEMINI_MODELS:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            if response and response.text:
+                return response.text.strip()
+        except Exception as e:
+            err_msg = str(e).lower()
+            if "429" in err_msg or "quota" in err_msg or "404" in err_msg or "not found" in err_msg:
+                continue
+            return f"Gemini Error: {e}"
+
+    return local_feedback(resume_text, job_description)
 
 @app.route("/")
 def index():
