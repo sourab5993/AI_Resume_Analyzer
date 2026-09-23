@@ -232,11 +232,18 @@ def get_ai_feedback(resume_text, job_description, cache_key=None):
         save_feedback_cache(FEEDBACK_CACHE)
     return feedback_text
 
-@app.route("/")
+@app.route("/", methods=['GET', 'POST'])
+@app.route("/api", methods=['GET', 'POST'])
+@app.route("/api/index", methods=['GET', 'POST'])
+@app.route("/index", methods=['GET', 'POST'])
 def index():
+    if request.method == 'POST':
+        return matcher()
     return render_template('matchresume.html')
 
 @app.route("/matcher", methods=['GET', 'POST'])
+@app.route("/api/matcher", methods=['GET', 'POST'])
+@app.route("/api/index/matcher", methods=['GET', 'POST'])
 def matcher():
     if request.method == 'POST':
         job_description = request.form.get('job_description', '')
@@ -300,6 +307,16 @@ def matcher():
 
     return render_template('matchresume.html')
 
+@app.errorhandler(404)
+def handle_404(e):
+    if request.method == 'POST':
+        return matcher()
+    return render_template('matchresume.html')
+
+# Expose WSGI handler for serverless platforms
+handler = app
+
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 5000))
     app.run(debug=True, port=port)
+
