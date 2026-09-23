@@ -2,6 +2,7 @@ from flask import Flask, request, render_template
 import os
 import hashlib
 import json
+import re
 from dotenv import load_dotenv
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -17,7 +18,8 @@ app.config['UPLOAD_FOLDER'] = 'uploads/'
 HASH_FILE = 'data/resume_hashes.json'
 
 # Load Gemini API
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+genai.configure(api_key=os.getenv("GEMINI_API_KEY")) 
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
 # Load hash database
 def load_hashes():
@@ -39,6 +41,26 @@ def file_hash(file_path):
     with open(file_path, 'rb') as f:
         return hashlib.md5(f.read()).hexdigest()
 
+def local_feedback(resume_text, job_description):
+    stop_words = {
+        "and", "the", "with", "for", "from", "that", "this", "are",
+        "you", "your", "will", "have", "has", "our", "their", "using",
+        "years", "work", "role", "must", "should"
+    }
+    job_terms = {
+        term.lower() for term in re.findall(r"[A-Za-z][A-Za-z0-9+#.-]{2,}", job_description)
+        if term.lower() not in stop_words
+    }
+    resume_lower = resume_text.lower()
+    matched = sorted(term for term in job_terms if term in resume_lower)
+    missing = sorted(term for term in job_terms if term not in resume_lower)
+
+    lines = ["Local resume feedback (Gemini quota unavailable):"]
+    lines.append("Matched skills/keywords: " + (", ".join(matched[:12]) if matched else "None found"))
+    lines.append("Missing job-description keywords: " + (", ".join(missing[:12]) if missing else "None identified"))
+    lines.append("Review the resume for measurable achievements, clear dates, and role-specific experience.")
+    return "\n".join(lines)
+
 # Generate AI feedback using Gemini
 def get_ai_feedback(resume_text, job_description):
     prompt = f"""
@@ -53,10 +75,12 @@ def get_ai_feedback(resume_text, job_description):
     Provide feedback on how the resume can be improved to better match the job description. List missing skills, improvements, and red flags.
     """
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")  # You can also try "gemini-1.5-flash" for faster responses
+        model = genai.GenerativeModel(GEMINI_MODEL)
         response = model.generate_content(prompt)
         return response.text.strip()
     except Exception as e:
+        if "429" in str(e) or "quota" in str(e).lower():
+            return local_feedback(resume_text, job_description)
         return f"Gemini Error: {e}"
 
 @app.route("/")
@@ -72,7 +96,7 @@ def matcher():
         if not job_description.strip() or not resume_files:
             return render_template('matchresume.html', message="Please provide job description and resumes.")
 
-        existing_hashes = load_hashes()
+        seen_hashes = set()
         resumes, filenames, feedbacks, parsed_data = [], [], [], []
 
         for resume_file in resume_files:
@@ -80,13 +104,16 @@ def matcher():
             resume_file.save(filepath)
             r_hash = file_hash(filepath)
 
-            if r_hash in existing_hashes:
+            if r_hash in seen_hashes:
                 continue
 
             text = extract_text(filepath)
+            if not text.strip():
+                continue
+
+            seen_hashes.add(r_hash)
             resumes.append(text)
             filenames.append(resume_file.filename)
-            existing_hashes[r_hash] = resume_file.filename
 
             feedback = get_ai_feedback(text, job_description)
             feedbacks.append(feedback)
@@ -94,10 +121,8 @@ def matcher():
             structured = extract_structured_data(text)
             parsed_data.append(structured)
 
-        save_hashes(existing_hashes)
-
         if not resumes:
-            return render_template('matchresume.html', message="All resumes were duplicates or unreadable.")
+            return render_template('matchresume.html', message="No readable resume was uploaded.")
 
         vectorizer = TfidfVectorizer().fit_transform([job_description] + resumes)
         vectors = vectorizer.toarray()

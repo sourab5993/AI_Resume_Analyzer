@@ -1,1 +1,13 @@
 .env
+.venv/
+env/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+pip_install.log
+
+# Uploaded resumes / user files
+uploads/*
+!uploads/.gitkeep

@@ -1,0 +1,6 @@
+flask
+python-dotenv
+PyPDF2
+google-generativeai
+scikit-learn
+docx2txt
