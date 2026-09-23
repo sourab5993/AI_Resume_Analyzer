@@ -9,9 +9,11 @@ An AI-powered web application that analyzes and ranks multiple resumes against a
 - **Multi-Format Resume Support**: Upload resumes in `.pdf`, `.docx`, and `.txt` formats.
 - **Smart Duplicate Detection**: MD5-based file hashing to avoid duplicate resume processing.
 - **NLP-Powered Ranking**: Scikit-Learn TF-IDF vectorization and cosine similarity scoring for objective relevance ranking.
-- **AI Feedback & Recommendations**:
-  - In-depth strengths and gap analysis using Google Gemini models.
-  - Automatic **local keyword fallback** if Gemini API rate limits (429) or quota errors occur.
+- **Limitless AI Feedback Engine**:
+  - **Multi-Key Pool**: Auto-rotates across multiple API keys (`GEMINI_API_KEYS=key1,key2...`) when quotas are reached.
+  - **Multi-Model Cascade**: Cascades through `gemini-3.7-flash` -> `gemini-3.5-flash-lite` -> `gemini-3.8-flash` -> `gemini-flash-latest`.
+  - **Smart Cache**: Instant in-memory and persistent caching for evaluated resumes.
+  - **Zero-Quota Pro NLP Critique**: High-fidelity offline evaluation engine providing Match Relevancy %, Executive Verdict, Confirmed Skills, Missing Keywords, Metric/Impact analysis, and Actionable Steps without requiring API quota.
 - **Structured Data Extraction**:
   - Automatically parses and categorizes **Skills**, **Education**, and **Experience**.
   - Built-in local fallback parser for offline/unauthenticated extraction.
